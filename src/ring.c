@@ -2,7 +2,7 @@
  * @author Sean Hobeck
  * @date 2026-02-27
  */
-#include "../ring.h"
+#include "ring.h"
 
 /*! @uses fprintf, stderr. */
 #include <stdio.h>
