@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+set -eu
+
+# run clang-tools on the makefile, clean it and remove the log file after checking.
+scan-build --status-bugs make clean all > scan_build.log
+if ! tail -n 5 scan_build.log | grep -Fxq "scan-build: No bugs found."; then
+  echo "lint-chk failed; please check scan-build.log!"
+  exit 1
+fi
+
+# clean and remove the log file.
+rm scan_build.log
+echo "scan-build check passed."
+
+# run clang-tidy on the compile_commands.json, ignore CRT warnings cause we don't care.
+run-clang-tidy -p . \
+  -checks='clang-diagnostic-*,clang-analyzer-*' \
+  -header-filter='^(include|src)/' \
+  -extra-arg="-Wno-unknown-warning-option" \
+  -extra-arg="-Wno-unused-command-line-argument" \
+  -quiet > run_clang_tidy_build.log
+exit_code=$?
+if [ $exit_code != 0 ]; then
+  echo "lint-chk failed; please check run_clang_tidy_build.log, or run 'make clean + bear -- make
+  .'!"
+  exit 1
+fi
+echo "run-clang-tidy diagnostic and analyzer checks passed."
+
+# remove the run-clang-tidy log file.
+rm run_clang_tidy_build.log
+
+# we are done!
+echo "lint-chk passed. no bugs found!"
+exit 0

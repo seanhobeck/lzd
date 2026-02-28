@@ -1,0 +1,11 @@
+Checks: 'clang-diagnostic-*,clang-analyzer-*'
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(include|src)/'
+CheckOptions:
+  - key: misc-non-private-member-variables-in-classes.CheckSetters
+    value: '0'
+  # Suppress specific warnings
+  - key: clang-diagnostic-unused-command-line-argument.SuppressWarnings
+    value: '1'
+  - key: clang-diagnostic-unknown-warning-option.SuppressWarnings
+    value: '1'
