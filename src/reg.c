@@ -79,7 +79,6 @@ region_init(pid_t pid, uint64_t start, uint64_t end) {
 
     /* allocate our region buffer. */
     region_t* region = calloc(1u, sizeof *region);
-    memset(region, 0, sizeof *region);
     region->pid = pid;
     region->page.size = 0x1000; /* we read 4KiB at a time. */
     region->base = align_down(start, region->page.size);

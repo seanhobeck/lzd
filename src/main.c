@@ -12,6 +12,9 @@
 
 #include "targ.h"
 
+#include "dyna.h"
+#include "mapp.h"
+
 void job(void *arg) {
 	int v = *(int *)arg;
 	printf("job %d on thread\n", v);
@@ -22,6 +25,12 @@ void job(void *arg) {
 int main(void) {
 	int pid = target_search_by_name("flatpak-portal");
 	printf("target found: %d\n", pid);
+
+	dyna_t* maps = dyna_create();
+	if (parse_maps(pid, maps) != 0u) {
+		fprintf(stderr, "lzd, main; could not parse maps.\n");
+		return 1;
+	}
 
 	wrk_pool_t *p = wrk_pool_create(4);
 
