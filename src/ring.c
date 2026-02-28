@@ -1,6 +1,6 @@
 /**
  * @author Sean Hobeck
- * @date 2026-02-27
+ * @date 2026-02-28
  */
 #include "ring.h"
 
@@ -53,7 +53,7 @@ ring_grow(ring_t* ring_queue) {
     /* allocate for the newcap. */
     void** tmp = calloc(mew_capacity, sizeof(void*));
     if (!tmp) {
-        fprintf(stderr, "tapi, ring_grow; calloc failed; could not allocate memory for grow.");
+        fprintf(stderr, "lzd, ring_grow; calloc failed; could not allocate memory for grow.");
         return -1;
     }
 
@@ -81,7 +81,7 @@ ssize_t
 ring_push(ring_t* ring_queue, void* item) {
     if (ring_queue->count == ring_queue->capacity) {
         if (ring_grow(ring_queue) != 0u) {
-            fprintf(stderr, "tapi, ring_push; grow failed; could not grow ring.");
+            fprintf(stderr, "lzd, ring_push; grow failed; could not grow ring.");
             return -1;
         }
     }

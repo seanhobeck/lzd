@@ -18,10 +18,10 @@
 typedef struct {
     pid_t pid; /* target process id. */
     uint64_t base; /* pointer to the base of the region. */
-    size_t size; /* number of bytes read (0x1000) 4KiB. */
+    size_t size; /* number of bytes read, should be 0x1000 or 4KiB. */
     struct {
         size_t size, count;
-    } pg_details; /* page details. */
+    } page; /* page details. */
     unsigned char* data, *present; /* data buffer, 1 byte per page, 1=readable, 0=hole. */
 } region_t;
 
@@ -52,14 +52,4 @@ region_free(region_t* region);
  */
 ssize_t
 region_read(region_t* region);
-
-/**
- * @brief get a pointer to the bytes at an address inside the region.
- *
- * @param region the region to get the bytes from.
- * @param address the address to start getting the bytes from.
- * @return a list of bytes if successful, 0x0 otherwise.
- */
-unsigned char*
-region_get_bytes(region_t* region, uint64_t address);
 #endif /* LZD_REG_H */

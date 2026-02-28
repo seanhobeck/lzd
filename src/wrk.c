@@ -1,6 +1,6 @@
 /**
  * @author Sean Hobeck
- * @date 2026-02-27
+ * @date 2026-02-28
  */
 #include "wrk.h"
 
@@ -28,7 +28,7 @@ job_make(wrk_fn_t fn, void* arg) {
 	/* allocate and copy. */
     job_t* job = calloc(1, sizeof *job);
     if (!job) {
-    	fprintf(stderr, "tapi, job_make; calloc failed; could not allocate memory for job.");
+    	fprintf(stderr, "lzd, job_make; calloc failed; could not allocate memory for job.");
         return 0x0;
     }
     job->fn = fn;
@@ -88,12 +88,12 @@ wrk_pool_create(size_t count) {
 	/* initialize the pool as well as the threads, mutex lock, and conditions. */
     wrk_pool_t* pool = calloc(1, sizeof *pool);
     if (!pool) {
-    	fprintf(stderr, "tapi, wrk_pool_create; calloc failed; could not allocate memory for pool.");
+    	fprintf(stderr, "lzd, wrk_pool_create; calloc failed; could not allocate memory for pool.");
 	    return 0x0;
     }
     pool->threads = (pthread_t*) calloc(count, sizeof(pthread_t));
     if (!pool->threads) {
-    	fprintf(stderr, "tapi, wrk_pool_create; calloc failed; could not allocate memory for threads.");
+    	fprintf(stderr, "lzd, wrk_pool_create; calloc failed; could not allocate memory for threads.");
         free(pool);
         return 0x0;
     }
@@ -118,7 +118,7 @@ wrk_pool_create(size_t count) {
         int retval = pthread_create(&pool->threads[i], 0x0, wrk_main, pool);
         if (retval != 0) {
             /* if partial create, shut down the ones created. */
-        	fprintf(stderr, "tapi, wrk_pool_create; fatal pthread_create failed; could not create "
+        	fprintf(stderr, "lzd, wrk_pool_create; fatal pthread_create failed; could not create "
 							"worker thread(s).");
             pthread_mutex_lock(&pool->lock);
             pool->shutting_down = 1;

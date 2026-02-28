@@ -11,11 +11,11 @@ build_dir := build/$(arch)
 vendor_dir := vendor/install/capstone/$(arch)
 
 # flags.
-cflags ?= -std=c17 -Wall -Wextra -g -O0
+cflags ?= -std=c17 -Wall -Wextra -g -O0 -D_GNU_SOURCE
 
 release ?= 0
 ifeq ($(release),1)
-  cflags := -std=c17 -Wall -Wextra -O2
+  cflags := -std=c17 -Wall -Wextra -O2 -D_GNU_SOURCE
 endif
 
 cflags += -I$(vendor_dir)/include

@@ -5,9 +5,15 @@
 #ifndef LZD_TARG_H
 #define LZD_TARG_H
 
-typedef struct {
-    char* name[256];
-    int pid;
-} targ_t;
+/*! @uses pid_t. */
+#include <stdlib.h>
 
+/**
+ * @brief find a target processes pid based on its exact name.
+ *
+ * @param process_name the target process name to look for.
+ * @return a pid if found, -1 o.w.
+ */
+pid_t
+target_search_by_name(const char* process_name);
 #endif /* LZD_TARG_H */

@@ -1,6 +1,6 @@
 /**
  * @author Sean Hobeck
- * @date 2026-02-27
+ * @date 2026-02-28
  */
 #include "dyna.h"
 
@@ -63,7 +63,7 @@ dyna_push(dyna_t* array, void* data) {
         void** _data = realloc(array->data, sizeof(void*) * _capacity);
         if (!_data) {
             /* NOLINTNEXTLINE */
-            fprintf(stderr, "tapi, dyna_push; realloc failed; could not allocate memory for push.");
+            fprintf(stderr, "lzd, dyna_push; realloc failed; could not allocate memory for push.");
             return; /* do NOT exit on failure. */
         }
         array->data = _data;
@@ -132,7 +132,7 @@ dyna_shrink(dyna_t* array) {
     void** _data = realloc(array->data, sizeof(void*) * array->length);
     if (!_data) {
         /* NOLINTNEXTLINE */
-        fprintf(stderr, "tapi, dyna_shrink; realloc failed; could not allocate memory for shrink.");
+        fprintf(stderr, "lzd, dyna_shrink; realloc failed; could not allocate memory for shrink.");
         exit(EXIT_FAILURE); /* exit on failure. */
     }
     array->data = _data;

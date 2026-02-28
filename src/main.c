@@ -10,6 +10,8 @@
 
 #include <unistd.h>
 
+#include "targ.h"
+
 void job(void *arg) {
 	int v = *(int *)arg;
 	printf("job %d on thread\n", v);
@@ -18,6 +20,9 @@ void job(void *arg) {
 }
 
 int main(void) {
+	int pid = target_search_by_name("flatpak-portal");
+	printf("target found: %d\n", pid);
+
 	wrk_pool_t *p = wrk_pool_create(4);
 
 	for (int i = 0; i < 1000; i++) {
