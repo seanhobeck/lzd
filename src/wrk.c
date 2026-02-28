@@ -2,165 +2,236 @@
  * @author Sean Hobeck
  * @date 2026-02-27
  */
-#include <wrk.h>
+#include "wrk.h"
 
-internal void
-job_free(job_t *j) {
-  free(j);
-}
+/*! @uses fprintf, stderr. */
+#include <stdio.h>
 
+/*! @uses calloc, free. */
+#include <stdlib.h>
+
+/*! @uses size_t. */
+#include <stddef.h>
+
+/*! @uses ring_t, ring_pop, ring_push. */
+#include "ring.h"
+
+/*! @uses internal. */
+#include "dyna.h"
+
+/**
+ * @brief make a new job_t structure for a worker thread to execute.
+ *
+ * @param fn the function for the worker to execute.
+ * @param arg the paramter for the job.
+ * @return a new pointer to a job made for the function.
+ */
 internal job_t*
-job_make(wrk_fn_t fn, void *arg) {
-    job_t *job = calloc(1, sizeof *job);
+job_make(wrk_fn_t fn, void* arg) {
+	/* allocate and copy. */
+    job_t* job = calloc(1, sizeof *job);
     if (!job) {
-        return NULL;
+    	fprintf(stderr, "tapi, job_make; calloc failed; could not allocate memory for job.");
+        return 0x0;
     }
     job->fn = fn;
     job->arg = arg;
     return job;
 }
 
+/**
+ * @brief the main code executor for a worker thread; grab a job and execute outside of lock.
+ *
+ * @param arg a pointer to the worker pool.
+ * @return 0x0.
+ */
 internal void*
-worker_main(void *arg) {
-    wrk_pool_t *p = arg;
+wrk_main(void* arg) {
+    wrk_pool_t* pool = arg;
     for (;;) {
-        pthread_mutex_lock(&p->mu);
-
-        while (!p->shutting_down && p->head == NULL) {
-          pthread_cond_wait(&p->has_work, &p->mu);
+        pthread_mutex_lock(&pool->lock);
+        while (!pool->shutting_down && pool->job_queue->count == 0u) {
+			pthread_cond_wait(&pool->has_work, &pool->lock);
+        }
+        if (pool->shutting_down && pool->job_queue->count == 0u) {
+			pthread_mutex_unlock(&pool->lock);
+			break;
         }
 
-        if (p->shutting_down && p->head == NULL) {
-          pthread_mutex_unlock(&p->mu);
-          break;
-        }
+    	/* grab a job and starting executing it. */
+        job_t* job = ring_pop(pool->job_queue);
+        pool->active++;
+        pthread_mutex_unlock(&pool->lock);
 
-        job_t *j = 0x0;
-        p->active++;
-        pthread_mutex_unlock(&p->mu);
+        /* run outside lock. */
+        if (job && job->fn)
+			job->fn(job->arg);
+        free(job);
+        pthread_mutex_lock(&pool->lock);
+        pool->active--;
 
-        /* run outside lock */
-        if (j && j->fn) {
-          j->fn(j->arg);
-        }
-        job_free(j);
-
-        pthread_mutex_lock(&p->mu);
-        p->active--;
-        if (p->queued == 0 && p->active == 0) {
-          pthread_cond_broadcast(&p->idle);
-        }
-        pthread_mutex_unlock(&p->mu);
+    	/* if there are no jobs queued or active, we broadcast that we are idle. */
+        if (pool->queued == 0u && pool->active == 0u)
+			pthread_cond_broadcast(&pool->idle);
+        pthread_mutex_unlock(&pool->lock);
     }
-
-    return NULL;
+    return 0x0;
 }
 
-wrk_pool_t *worker_pool_create(size_t nthreads) {
-    if (nthreads == 0) nthreads = 1;
+/**
+ * @brief create a new worker pool with a set number of threads.
+ *
+ * @param count the number of worker threads to be created.
+ * @return a pointer to a worker pool ready for jobs to be posted.
+ */
+wrk_pool_t*
+wrk_pool_create(size_t count) {
+    if (count == 0) count = 1;
 
-    wrk_pool_t *p = (wrk_pool_t *)calloc(1, sizeof(*p));
-    if (!p) return NULL;
-
-    p->threads = (pthread_t *)calloc(nthreads, sizeof(pthread_t));
-    if (!p->threads) {
-        free(p);
-        return NULL;
+	/* initialize the pool as well as the threads, mutex lock, and conditions. */
+    wrk_pool_t* pool = calloc(1, sizeof *pool);
+    if (!pool) {
+    	fprintf(stderr, "tapi, wrk_pool_create; calloc failed; could not allocate memory for pool.");
+	    return 0x0;
     }
+    pool->threads = (pthread_t*) calloc(count, sizeof(pthread_t));
+    if (!pool->threads) {
+    	fprintf(stderr, "tapi, wrk_pool_create; calloc failed; could not allocate memory for threads.");
+        free(pool);
+        return 0x0;
+    }
+    pool->count = count;
+    pthread_mutex_init(&pool->lock, 0x0);
+    pthread_cond_init(&pool->has_work, 0x0);
+    pthread_cond_init(&pool->idle, 0x0);
 
-    p->nthreads = nthreads;
+	/* queue cap of 8 jobs, we don't need more than this. */
+	if ((pool->job_queue = ring_init()) == 0x0) {
+		pthread_cond_destroy(&pool->idle);
+		pthread_cond_destroy(&pool->has_work);
+		pthread_mutex_destroy(&pool->lock);
+		free(pool->threads);
+		free(pool);
+		return NULL;
+	}
 
-    pthread_mutex_init(&p->mu, NULL);
-    pthread_cond_init(&p->has_work, NULL);
-    pthread_cond_init(&p->idle, NULL);
-
-    for (size_t i = 0; i < nthreads; i++) {
-        int rc = pthread_create(&p->threads[i], NULL, worker_main, p);
-        if (rc != 0) {
-            /* if partial create, shut down the ones created */
-            pthread_mutex_lock(&p->mu);
-            p->shutting_down = 1;
-            pthread_cond_broadcast(&p->has_work);
-            pthread_mutex_unlock(&p->mu);
-
-            for (size_t j = 0; j < i; j++) {
-              pthread_join(p->threads[j], NULL);
-            }
-
-            pthread_cond_destroy(&p->idle);
-            pthread_cond_destroy(&p->has_work);
-            pthread_mutex_destroy(&p->mu);
-
-            free(p->threads);
-            free(p);
-            return NULL;
+	/* iterate and create a thread, if one cannot be created, destroy the entire pool and report
+	 *  the error. */
+    for (size_t i = 0; i < count; i++) {
+        int retval = pthread_create(&pool->threads[i], 0x0, wrk_main, pool);
+        if (retval != 0) {
+            /* if partial create, shut down the ones created. */
+        	fprintf(stderr, "tapi, wrk_pool_create; fatal pthread_create failed; could not create "
+							"worker thread(s).");
+            pthread_mutex_lock(&pool->lock);
+            pool->shutting_down = 1;
+            pthread_cond_broadcast(&pool->has_work);
+            pthread_mutex_unlock(&pool->lock);
+            for (size_t j = 0; j < i; j++)
+            	pthread_join(pool->threads[j], 0x0);
+            pthread_cond_destroy(&pool->idle);
+            pthread_cond_destroy(&pool->has_work);
+            pthread_mutex_destroy(&pool->lock);
+            free(pool->threads);
+            free(pool);
+            return 0x0;
         }
     }
-
-    return p;
+    return pool;
 }
 
-int worker_pool_submit(wrk_pool_t *p, wrk_fn_t fn, void *arg) {
-	if (!p || !fn) return -1;
+/**
+ * @brief 'post' or submit a new job to the worker pool.
+ *
+ * @param pool the pool to post a new job to.
+ * @param fn the function to be executed.
+ * @param arg the argument required for the job.
+ * @return -1 if a failure occurs, 0 o.w.
+ */
+ssize_t
+wrk_pool_post(wrk_pool_t* pool, const wrk_fn_t fn, void* arg) {
+	if (!pool || !fn) return -1;
 
-	job_t *j = job_make(fn, arg);
-	if (!j) return -1;
-
-	pthread_mutex_lock(&p->mu);
-	if (p->shutting_down) {
-		pthread_mutex_unlock(&p->mu);
-		job_free(j);
+	/* make a new job given the function and argument. */
+	job_t* job = job_make(fn, arg);
+	if (!job) return -1;
+	pthread_mutex_lock(&pool->lock);
+	if (pool->shutting_down) {
+		pthread_mutex_unlock(&pool->lock);
+		free(job);
 		return -1;
 	}
 
-	queue_push(p, j);
-	pthread_cond_signal(&p->has_work);
-	pthread_mutex_unlock(&p->mu);
-	return 0;
+	/* push the job onto the ring queue and we are done. */
+	ring_push(pool->job_queue, job);
+	pthread_cond_signal(&pool->has_work);
+	pthread_mutex_unlock(&pool->lock);
+	return 0u;
 }
 
-void worker_pool_drain(wrk_pool_t *p) {
-	if (!p) return;
+/**
+ * @brief drain a worker pool of all jobs.
+ *
+ * @param pool the pool to be drained.
+ */
+void
+wrk_pool_drain(wrk_pool_t* pool) {
+	if (!pool) return;
 
-	pthread_mutex_lock(&p->mu);
-	while (p->queued != 0 || p->active != 0) {
-		pthread_cond_wait(&p->idle, &p->mu);
-	}
-	pthread_mutex_unlock(&p->mu);
+	/* wait until each worker thread is done, then continue. */
+	pthread_mutex_lock(&pool->lock);
+	while (pool->queued != 0 || pool->active != 0)
+		pthread_cond_wait(&pool->idle, &pool->lock);
+	pthread_mutex_unlock(&pool->lock);
 }
 
-void worker_pool_shutdown(wrk_pool_t *p) {
-	if (!p) return;
+/**
+ * @brief shutdown all threads in the pool by joining them.
+ *
+ * @param pool the pool to be shutdown.
+ */
+void
+wrk_pool_shutdown(wrk_pool_t* pool) {
+	if (!pool) return;
 
-	pthread_mutex_lock(&p->mu);
-	if (!p->shutting_down) {
-		p->shutting_down = 1;
-		pthread_cond_broadcast(&p->has_work);
+	/* change the condition. */
+	pthread_mutex_lock(&pool->lock);
+	if (!pool->shutting_down) {
+		pool->shutting_down = true;
+		pthread_cond_broadcast(&pool->has_work);
 	}
-	pthread_mutex_unlock(&p->mu);
+	pthread_mutex_unlock(&pool->lock);
 
-	for (size_t i = 0; i < p->nthreads; i++) {
-		pthread_join(p->threads[i], NULL);
-	}
+	/* join each worker thread. */
+	for (size_t i = 0; i < pool->count; i++)
+		pthread_join(pool->threads[i], 0x0);
 }
 
-void worker_pool_destroy(wrk_pool_t *p) {
-	if (!p) return;
-
-	worker_pool_shutdown(p);
+/**
+ * @brief destroy a worker pool for good.
+ *
+ * @param pool the worker pool to be destroyed.
+ */
+void
+wrk_pool_destroy(wrk_pool_t* pool) {
+	/* shutdown the pool. */
+	if (!pool) return;
+	wrk_pool_shutdown(pool);
 
 	/* free any queued jobs (should be none, but be safe) */
-	job_t *cur = p->head;
-	while (cur) {
-		job_t *n = cur->next;
-		job_free(cur);
-		cur = n;
+	for (;;) {
+		job_t* job = 0x0;
+		pthread_mutex_lock(&pool->lock);
+		job = ring_pop(pool->job_queue);
+		pthread_mutex_unlock(&pool->lock);
+		if (!job) break;
+		free(job);
 	}
 
-	pthread_cond_destroy(&p->idle);
-	pthread_cond_destroy(&p->has_work);
-	pthread_mutex_destroy(&p->mu);
-
-	free(p->threads);
-	free(p);
+	/* destroy thread conditions and mutex lock. */
+	pthread_cond_destroy(&pool->idle);
+	pthread_cond_destroy(&pool->has_work);
+	pthread_mutex_destroy(&pool->lock);
+	free(pool->threads);
+	free(pool);
 }

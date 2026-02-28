@@ -11,7 +11,7 @@ build_dir := build/$(arch)
 vendor_dir := vendor/install/capstone/$(arch)
 
 # flags.
-cflags ?= -std=c17 -Wall -Wextra -g -O0 -Iinclude/
+cflags ?= -std=c17 -Wall -Wextra -g -O0
 
 release ?= 0
 ifeq ($(release),1)

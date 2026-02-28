@@ -2,7 +2,7 @@
  * @author Sean Hobeck
  * @date 2026-02-27
  */
-#include <dyna.h>
+#include "dyna.h"
 
 /*! @uses assert. */
 #include <assert.h>
