@@ -13,11 +13,8 @@
 /*! @uses size_t. */
 #include <stddef.h>
 
-/*! @uses ring_t, ring_pop, ring_push. */
-#include "../ring.h"
-
 /*! @uses internal. */
-#include "../dyna.h"
+#include "dyna.h"
 
 /**
  * @brief make a new job_t structure for a worker thread to execute.

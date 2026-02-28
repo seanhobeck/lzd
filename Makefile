@@ -23,7 +23,7 @@ ldflags := -L$(vendor_dir)/lib
 ldlibs := -lcapstone -lncursesw
 
 # source discovery.
-src := $(wildcard $(src_dir)/*.c)
+src := $(shell find $(src_dir) -type f -name '*.c')
 obj := $(patsubst $(src_dir)/%.c,$(build_dir)/%.o,$(src))
 target := lzd
 

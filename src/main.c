@@ -4,7 +4,7 @@
  */
 #include <stdio.h>
 
-#include "core/wrk.h"
+#include "wrk.h"
 
 #include <stdlib.h>
 
