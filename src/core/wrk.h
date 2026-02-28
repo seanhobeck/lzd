@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 /*! @uses ring_t, ring_push, ring_pop. */
-#include "ring.h"
+#include "../ring.h"
 
 /* ... */
 typedef void (*wrk_fn_t)(void*);
