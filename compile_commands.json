@@ -1,0 +1,173 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/ux.o",
+      "src/ux.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/ux.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/ux.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/wrk.o",
+      "src/wrk.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/wrk.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/wrk.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/main.o",
+      "src/main.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/main.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/elfx.o",
+      "src/elfx.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/elfx.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/elfx.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/disj.o",
+      "src/disj.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/disj.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/disj.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/ui.o",
+      "src/ui.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/ui.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/ui.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/dyna.o",
+      "src/dyna.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/dyna.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/dyna.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/emit.o",
+      "src/emit.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/emit.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/emit.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c17",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-O0",
+      "-D_GNU_SOURCE",
+      "-Ivendor/build/x86_64/include",
+      "-c",
+      "-o",
+      "build/x86_64/ring.o",
+      "src/ring.c"
+    ],
+    "directory": "/home/sean-desktop/Work/lzd",
+    "file": "/home/sean-desktop/Work/lzd/src/ring.c",
+    "output": "/home/sean-desktop/Work/lzd/build/x86_64/ring.o"
+  }
+]
