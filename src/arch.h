@@ -16,7 +16,7 @@ typedef struct {
 } tup_arch_t;
 
 /** @return get an architecture tuple for the compiled version of lzd. */
-const tup_arch_t get_arch() {
+static tup_arch_t get_arch() {
 #ifdef __x86_64__
     return (tup_arch_t){ .arch = CS_ARCH_X86, .mode = CS_MODE_64 };
 #endif
@@ -24,7 +24,7 @@ const tup_arch_t get_arch() {
     return (tup_arch_t){ .arch = CS_ARCH_X86, .mode = CS_MODE_32 };
 #endif
 #ifdef __aarch64__
-    return (tup_arch_t){ .arch = CS_ARCH_ARM64, .mode = CS_MODE_ARM };
+    return (tup_arch_t){ .arch = CS_ARCH_AARCH64, .mode = CS_MODE_ARM };
 #endif
 };
 #endif /* LZD_ARCH_H */

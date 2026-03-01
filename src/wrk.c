@@ -68,7 +68,7 @@ wrk_main(void* arg) {
         pool->active--;
 
     	/* if there are no jobs queued or active, we broadcast that we are idle. */
-        if (pool->queued == 0u && pool->active == 0u)
+        if (pool->job_queue->count == 0u && pool->active == 0u)
 			pthread_cond_broadcast(&pool->idle);
         pthread_mutex_unlock(&pool->lock);
     }
@@ -177,7 +177,7 @@ wrk_pool_drain(wrk_pool_t* pool) {
 
 	/* wait until each worker thread is done, then continue. */
 	pthread_mutex_lock(&pool->lock);
-	while (pool->queued != 0 || pool->active != 0)
+	while (pool->job_queue->count != 0 || pool->active != 0)
 		pthread_cond_wait(&pool->idle, &pool->lock);
 	pthread_mutex_unlock(&pool->lock);
 }

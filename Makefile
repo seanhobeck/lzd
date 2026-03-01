@@ -8,7 +8,7 @@ arch ?= x86_64
 # directories.
 src_dir := src
 build_dir := build/$(arch)
-vendor_dir := vendor/install/capstone/$(arch)
+vendor_dir := vendor/build/$(arch)
 
 # flags.
 cflags ?= -std=c17 -Wall -Wextra -g -O0 -D_GNU_SOURCE
@@ -18,9 +18,10 @@ ifeq ($(release),1)
   cflags := -std=c17 -Wall -Wextra -O2 -D_GNU_SOURCE
 endif
 
-cflags += -I$(vendor_dir)/include
-ldflags := -L$(vendor_dir)/lib
-ldlibs := -lcapstone -lncursesw
+# includes / libs.
+cflags  += -I$(vendor_dir)/include
+ldflags :=
+ldlibs  := $(vendor_dir)/lib/libcapstone.a -lncursesw
 
 # source discovery.
 src := $(shell find $(src_dir) -type f -name '*.c')
@@ -37,6 +38,7 @@ $(target): $(obj)
 	$(cc) $(obj) $(ldflags) $(ldlibs) -o $@
 
 $(build_dir)/%.o: $(src_dir)/%.c
+	$(mkdir) $(dir $@)
 	$(cc) $(cflags) -c $< -o $@
 
 # clean
