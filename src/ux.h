@@ -21,17 +21,23 @@ typedef struct {
     /* used in the tui. */
     char mnemonic[32];
     char op_str[128];
+    char* full_string;
 } ux_insn_t;
 
 /* ... */
 typedef struct {
-    /* copy of job metadata (whatever you want UI to know) */
     uint64_t base; /* chunk base address */
     size_t length; /* visible bytes */
     size_t read; /* bytes read (length + overlap) */
     pid_t pid;
     dyna_t* insns; /* dyna of ux_insn_t (owned by ux thread after post). */
 } ux_page_msg_t;
+
+/** @brief initialize the ux module, more specifically the worker pool. */
+void ux_init();
+
+/** @brief shutdown the ux module. */
+void ux_shutdown();
 
 /**
  * @brief post finished disassembly jobs to the ux module for rendering.
@@ -40,4 +46,15 @@ typedef struct {
  */
 void
 ux_post(ux_page_msg_t* message);
+
+/**
+ * @brief handle keyboard input for the ux.
+ *
+ * @param model the ui model.
+ * @param character the character input.
+ * @return the action to take.
+ */
+#include "ui.h"
+ui_act_t
+ux_handle_key(ui_model_t* model, int character);
 #endif /* LZD_UX_H */

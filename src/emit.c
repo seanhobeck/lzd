@@ -40,7 +40,6 @@ is_padding(uint8_t byte) {
  */
 internal bool
 is_padding_run(uint8_t* data, size_t length, size_t min_run) {
-    if (length < min_run) return false;
     size_t count = 0;
     for (size_t i = 0; i < length; i++) {
         if (is_padding(data[i])) count++;
@@ -67,12 +66,8 @@ emit_load(const char* path, tup_arch_t tuple) {
     }
 
     /* if tuple is zero, auto-detect from elf. */
-    printf("lzd, emit_load; elf machine=%d, class=%d\n", elf->machine, elf->class);
     if (tuple.arch == 0 && tuple.mode == 0) {
         tuple = elf_get_arch(elf);
-        printf("lzd, emit_load; auto-detected arch=%d, mode=%d\n", tuple.arch, tuple.mode);
-    } else {
-        printf("lzd, emit_load; using provided tuple (not auto-detecting)\n");
     }
 
     /* find the .text section. */
@@ -190,7 +185,6 @@ emit_scan_text(emit_ctx_t* ctx) {
             dyna_push(ctx->code_ranges, range);
         }
     }
-    printf("lzd, emit_scan_text; found %zu code ranges.\n", ctx->code_ranges->length);
     return 0;
 }
 
@@ -253,4 +247,86 @@ emit_all(emit_ctx_t* ctx, wrk_pool_t* pool) {
         }
     _endforeach;
     return 0;
+}
+
+/**
+ * @brief check if a byte is printable ascii.
+ *
+ * @param c the byte to check.
+ * @return if the byte is printable.
+ */
+internal bool
+is_printable(uint8_t c) {
+    return c >= 0x20 && c <= 0x7e;
+}
+
+/**
+ * @brief extract printable strings from elf sections.
+ *
+ * @param ctx the emit context.
+ * @param min_len minimum string length to extract (default 4).
+ * @return dyna_t* of char* strings, or 0x0 on failure.
+ */
+dyna_t*
+emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
+    dyna_t* strings = dyna_create();
+    if (!strings) return 0x0;
+
+    /* scan .rodata and .data sections. */
+    const char* section_names[] = { ".rodata", ".data", ".dynstr", ".strtab" };
+    for (size_t i = 0; i < 4; i++) {
+        elf_shdr_t* shdr = 0x0;
+
+        /* find the section. */
+        _foreach_it(ctx->elf->shdrs, elf_shdr_t*, header, j)
+            const char* name = elf_shdr_name(ctx->elf, header);
+            if (name && strcmp(name, section_names[i]) == 0) {
+                shdr = header;
+                break;
+            }
+        _endforeach;
+        if (!shdr || shdr->size == 0) continue;
+
+        /* read section data from file. */
+        FILE* f = fopen(ctx->elf->path, "rb");
+        if (!f) continue;
+        uint8_t* data = malloc(shdr->size);
+        if (!data) {
+            fclose(f);
+            continue;
+        }
+        fseek(f, shdr->offset, SEEK_SET);
+        size_t read = fread(data, 1, shdr->size, f);
+        fclose(f);
+        if (read != shdr->size) {
+            free(data);
+            continue;
+        }
+
+        /* extract strings. */
+        size_t str_start = 0;
+        bool in_string = false;
+        for (size_t j = 0; j < shdr->size; j++) {
+            if (is_printable(data[j]) && data[j] != 0) {
+                if (!in_string) {
+                    str_start = j;
+                    in_string = true;
+                }
+            } else {
+                if (in_string) {
+                    size_t len = j - str_start;
+                    if (len >= min_len) {
+                        char* str = calloc(1, len + 1);
+                        if (str) {
+                            memcpy(str, data + str_start, len);
+                            dyna_push(strings, &str);
+                        }
+                    }
+                    in_string = false;
+                }
+            }
+        }
+        free(data);
+    }
+    return strings;
 }

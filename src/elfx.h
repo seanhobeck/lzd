@@ -129,6 +129,7 @@ typedef struct {
     dyna_t* shdrs; /* dynamic array of elf_shdr_t*. */
     char* shstrtab; /* section header string table. */
     size_t shstrtab_size; /* size of shstrtab. */
+    char* path; /* path to elf file. */
 } elf_t;
 
 /**

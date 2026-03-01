@@ -88,4 +88,14 @@ emit_range(emit_ctx_t* ctx, wrk_pool_t* pool, uint64_t vaddr_start, uint64_t vad
  */
 ssize_t
 emit_all(emit_ctx_t* ctx, wrk_pool_t* pool);
+
+/**
+ * @brief extract printable strings from elf sections.
+ *
+ * @param ctx the emit context.
+ * @param min_len minimum string length to extract (default 4).
+ * @return dyna_t* of char* strings, or 0x0 on failure.
+ */
+dyna_t*
+emit_extract_strings(emit_ctx_t* ctx, size_t min_len);
 #endif /* LZD_EMIT_H */

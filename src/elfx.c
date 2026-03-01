@@ -336,6 +336,11 @@ elf_parse(const char* path) {
     else
         fprintf(stderr, "lzd, elf_parse; unsupported elf class %d.\n", buffer[EI_CLASS]);
 
+    /* store path in elf structure. */
+    if (elf) {
+        elf->path = strdup(path);
+    }
+
     free(buffer);
     return elf;
 }
@@ -367,6 +372,9 @@ elf_free(elf_t* elf) {
 
     /* free string table. */
     free(elf->shstrtab);
+
+    /* free path. */
+    free(elf->path);
     free(elf);
 }
 
@@ -381,6 +389,7 @@ const char*
 elf_shdr_name(elf_t* elf, elf_shdr_t* shdr) {
     if (!elf || !shdr || !elf->shstrtab) return 0x0;
     if (shdr->name >= elf->shstrtab_size) return 0x0;
+    if (shdr->name == 0 || shdr->addr == 0) return 0x0;
     return elf->shstrtab + shdr->name;
 }
 
