@@ -16,6 +16,9 @@
 /*! @uses memcmp, memset. */
 #include <string.h>
 
+/*! @uses bool, true, false. */
+#include <stdbool.h>
+
 /*! @uses internal. */
 #include "dyna.h"
 
@@ -239,6 +242,7 @@ emit_all(emit_ctx_t* ctx, wrk_pool_t* pool) {
     if (!ctx || !pool) return -1;
 
     /* post all code ranges. */
+    size_t job_num = 0;
     _foreach(ctx->code_ranges, code_range_t*, range)
         if (disj_post_bytes(pool, ctx->tuple, ctx->text_data + range->offset, \
             range->length, range->vaddr) != 0) {
@@ -261,7 +265,33 @@ is_printable(uint8_t c) {
 }
 
 /**
- * @brief extract printable strings from elf sections.
+ * @brief check if string is valid (has enough alphanumeric chars).
+ *
+ * @param str the string to check.
+ * @param len the length of the string.
+ * @return if the string appears valid.
+ */
+internal bool
+is_valid_string(const char* str, size_t len) {
+    if (len == 0) return false;
+
+    size_t alnum_count = 0;
+    size_t space_count = 0;
+
+    for (size_t i = 0; i < len; i++) {
+        uint8_t c = str[i];
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+            alnum_count++;
+        else if (c == ' ')
+            space_count++;
+    }
+
+    /* require at least 50% alphanumeric, and not all spaces. */
+    return (alnum_count * 2 >= len) && (space_count < len);
+}
+
+/**
+ * @brief extract printable strings from elf using strings command.
  *
  * @param ctx the emit context.
  * @param min_len minimum string length to extract (default 4).
@@ -269,36 +299,39 @@ is_printable(uint8_t c) {
  */
 dyna_t*
 emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
+    if (!ctx || !ctx->elf) return 0x0;
+    if (min_len == 0) min_len = 4;
+
     dyna_t* strings = dyna_create();
     if (!strings) return 0x0;
 
     /* scan .rodata and .data sections. */
-    const char* section_names[] = { ".rodata", ".data", ".dynstr", ".strtab" };
-    for (size_t i = 0; i < 4; i++) {
-        elf_shdr_t* shdr = 0x0;
-
+    const char* section_names[] = { ".dynstr", ".strtab" };
+    _foreach(ctx->elf->shdrs, elf_shdr_t*, header)
         /* find the section. */
-        _foreach_it(ctx->elf->shdrs, elf_shdr_t*, header, j)
-            const char* name = elf_shdr_name(ctx->elf, header);
-            if (name && strcmp(name, section_names[i]) == 0) {
-                shdr = header;
+        bool found = false;
+        const char* name = elf_shdr_name(ctx->elf, header);
+        if (!name) continue;
+        for (size_t j = 0; j < 2; j++) {
+            if (!strcmp(name, section_names[j])) {
+                found = true;
                 break;
             }
-        _endforeach;
-        if (!shdr || shdr->size == 0) continue;
+        }
+        if (!header || header->size == 0 || !found) continue;
 
         /* read section data from file. */
         FILE* f = fopen(ctx->elf->path, "rb");
         if (!f) continue;
-        uint8_t* data = malloc(shdr->size);
+        uint8_t* data = malloc(header->size);
         if (!data) {
             fclose(f);
             continue;
         }
-        fseek(f, shdr->offset, SEEK_SET);
-        size_t read = fread(data, 1, shdr->size, f);
+        fseek(f, header->offset, SEEK_SET);
+        size_t read = fread(data, 1, header->size, f);
         fclose(f);
-        if (read != shdr->size) {
+        if (read != header->size) {
             free(data);
             continue;
         }
@@ -306,7 +339,7 @@ emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
         /* extract strings. */
         size_t str_start = 0;
         bool in_string = false;
-        for (size_t j = 0; j < shdr->size; j++) {
+        for (size_t j = 0; j < header->size; j++) {
             if (is_printable(data[j]) && data[j] != 0) {
                 if (!in_string) {
                     str_start = j;
@@ -316,10 +349,13 @@ emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
                 if (in_string) {
                     size_t len = j - str_start;
                     if (len >= min_len) {
-                        char* str = calloc(1, len + 1);
-                        if (str) {
-                            memcpy(str, data + str_start, len);
-                            dyna_push(strings, &str);
+                        /* validate the string before adding. */
+                        if (is_valid_string((char*)(data + str_start), len)) {
+                            char* str = calloc(1, len + 1);
+                            if (str) {
+                                memcpy(str, data + str_start, len);
+                                dyna_push(strings, str);
+                            }
                         }
                     }
                     in_string = false;
@@ -327,6 +363,6 @@ emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
             }
         }
         free(data);
-    }
+    _endforeach;
     return strings;
 }

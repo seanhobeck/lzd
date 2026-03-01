@@ -389,8 +389,11 @@ const char*
 elf_shdr_name(elf_t* elf, elf_shdr_t* shdr) {
     if (!elf || !shdr || !elf->shstrtab) return 0x0;
     if (shdr->name >= elf->shstrtab_size) return 0x0;
-    if (shdr->name == 0 || shdr->addr == 0) return 0x0;
-    return elf->shstrtab + shdr->name;
+
+    const char* s = elf->shstrtab + shdr->name;
+    size_t remaining = elf->shstrtab_size - shdr->name;
+    if (!memchr(s, 0, remaining)) return 0x0; /* no terminator in table. */
+    return s;
 }
 
 /**
