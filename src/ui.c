@@ -1,6 +1,6 @@
 /**
  * @author Sean Hobeck
- * @date 2026-02-29
+ * @date 2026-03-01
  */
 #include "ui.h"
 
@@ -21,6 +21,9 @@
 
 /*! @uses internal. */
 #include "dyna.h"
+
+/*! @uses elf_symbol_t. */
+#include "elfx.h"
 
 /**
  * @brief clamp an integer to a range.
@@ -95,9 +98,11 @@ draw_list(WINDOW* w, ui_model_t* m) {
     pthread_mutex_lock(&m->lock);
 
     /* determine what to display based on view mode. */
-    dyna_t* items = (m->view_mode == UI_VIEW_STRINGS) ? m->strings : m->instructions;
+    dyna_t* items = (m->view_mode == UI_VIEW_STRINGS) ? m->strings : m->view_mode == UI_VIEW_SYMBOLS ? \
+        m->symbols : m->instructions;
     ssize_t item_count = items ? items->length : 0;
-    const char* view_name = (m->view_mode == UI_VIEW_STRINGS) ? "strings" : "instructions";
+    const char* view_name = (m->view_mode == UI_VIEW_STRINGS) ? "strings" : \
+        m->view_mode == UI_VIEW_SYMBOLS ? "symbols" : "instructions";
 
     /* keep scroll/selected sane. */
     m->selected = clampi((int)m->selected, 0, (int)(item_count > 0 ? item_count - 1 : 0));
@@ -120,7 +125,7 @@ draw_list(WINDOW* w, ui_model_t* m) {
 
         /* get item based on view mode. */
         const char* s = "";
-        if (m->view_mode == UI_VIEW_STRINGS) {
+        if (m->view_mode == UI_VIEW_STRINGS || m->view_mode == UI_VIEW_SYMBOLS) {
             char* str = _get(items, char*, idx);
             s = str ? str : "";
         } else {
@@ -225,6 +230,7 @@ ui_model_create(const char* title, const char* subtitle) {
     /* initialize dynamic arrays. */
     model->instructions = dyna_create();
     model->strings = dyna_create();
+    model->symbols = dyna_create();
     model->view_mode = UI_VIEW_INSTRUCTIONS;
     pthread_mutex_init(&model->lock, 0x0);
     return model;
@@ -315,6 +321,26 @@ ui_model_add_strings(ui_model_t* model, dyna_t* strings) {
 }
 
 /**
+ * @brief add elf symbol strings to the ui model.
+ *
+ * @param model the ui model.
+ * @param symbols dynamic array of elf_symbol_t*.
+ */
+void
+ui_model_add_symbols(ui_model_t* model, dyna_t* symbols) {
+    if (!model || !symbols) return;
+
+    pthread_mutex_lock(&model->lock);
+    _foreach(symbols, elf_symbol_t*, sym)
+        char* string = calloc(1u, 256u + 1u);
+        if (sym->value) snprintf(string, 256u, "%p:\t%s", (void*) (sym->value), sym->name);
+        else snprintf(string, 256u, "(lib./ext.):\t%s", sym->name);
+        dyna_push(model->symbols, string);
+    _endforeach;
+    pthread_mutex_unlock(&model->lock);
+};
+
+/**
  * @brief set the view mode.
  *
  * @param model the ui model.
@@ -328,8 +354,9 @@ ui_model_set_view(ui_model_t* model, ui_view_mode_t mode) {
     model->view_mode = mode;
     model->selected = 0;
     model->scroll = 0;
-    snprintf(model->status, sizeof(model->status), "switched to %s view",
-             mode == UI_VIEW_STRINGS ? "strings" : "instructions");
+    snprintf(model->status, sizeof(model->status), "switched to %s view", \
+             mode == UI_VIEW_STRINGS ? "strings" : mode == UI_VIEW_SYMBOLS ? \
+             "symbols" : "instructions");
     pthread_mutex_unlock(&model->lock);
 }
 

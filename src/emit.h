@@ -1,6 +1,6 @@
 /**
  * @author Sean Hobeck
- * @date 2026-02-28
+ * @date 2026-03-01
  */
 #ifndef LZD_EMIT_H
 #define LZD_EMIT_H
@@ -23,7 +23,7 @@
 /*! @uses elf_t, elf_shdr_t. */
 #include "elfx.h"
 
-/* represents a loaded elf binary with its .text section in memory. */
+/* ... */
 typedef struct {
     elf_t* elf; /* parsed elf structure. */
     tup_arch_t tuple; /* architecture for disassembly. */
@@ -33,7 +33,7 @@ typedef struct {
     dyna_t* code_ranges; /* dynamic array of code_range_t*. */
 } emit_ctx_t;
 
-/* represents a contiguous range of executable code. */
+/* ... */
 typedef struct {
     uint64_t vaddr; /* virtual address. */
     size_t offset; /* offset into text_data. */
@@ -98,4 +98,13 @@ emit_all(emit_ctx_t* ctx, wrk_pool_t* pool);
  */
 dyna_t*
 emit_extract_strings(emit_ctx_t* ctx, size_t min_len);
+
+/**
+ * @brief extract symbols from elf symbol tables.
+ *
+ * @param ctx the emit context.
+ * @return dyna_t* of elf_symbol_t* symbols, or 0x0 on failure.
+ */
+dyna_t*
+emit_extract_symbols(emit_ctx_t* ctx);
 #endif /* LZD_EMIT_H */

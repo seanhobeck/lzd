@@ -155,8 +155,10 @@ ux_handle_key(ui_model_t* model, int character) {
         case KEY_ENTER: /* perform action. */ {
             if (!strcmp(model->cmd, "quit"))
                 return TUI_ACT_QUIT;
-            if (!strcmp(model->cmd, "refresh"))
+            if (!strcmp(model->cmd, "refresh")) {
+                memset(model->cmd, 0, sizeof(model->cmd));
                 return TUI_ACT_REFRESH;
+            }
             if (!strcmp(model->cmd, "view strings")) {
                 ui_model_set_view(model, UI_VIEW_STRINGS);
                 memset(model->cmd, 0, sizeof(model->cmd));
@@ -166,6 +168,72 @@ ux_handle_key(ui_model_t* model, int character) {
                 ui_model_set_view(model, UI_VIEW_INSTRUCTIONS);
                 memset(model->cmd, 0, sizeof(model->cmd));
                 return TUI_ACT_NONE;
+            }
+            if (!strcmp(model->cmd, "view symbols")) {
+                ui_model_set_view(model, UI_VIEW_SYMBOLS);
+                memset(model->cmd, 0, sizeof(model->cmd));
+                return TUI_ACT_NONE;
+            }
+            if (strstr(model->cmd, "goto ")) {
+                char* space = strchr(model->cmd, ' ');
+                if (space) {
+                    char* address = space + 1;
+                    if (model->instructions->length == 0) {
+                        snprintf(model->status, sizeof(model->status), "no instructions loaded.");
+                        memset(model->cmd, 0, sizeof(model->cmd));
+                        return TUI_ACT_NONE;
+                    }
+                    if (model->view_mode != UI_VIEW_INSTRUCTIONS) {
+                        snprintf(model->status, sizeof(model->status), "must be in instructions view to goto address.");
+                        memset(model->cmd, 0, sizeof(model->cmd));
+                        return TUI_ACT_NONE;
+                    }
+
+                    /* parse address. */
+                    int base = 10;
+                    if (address[0] == '0' && (address[1] == 'x' || address[1] == 'X')) base = 16;
+                    char* end = 0x0;
+                    unsigned long long addr = strtoull(address, &end, base);
+                    if (!end || end == address) {
+                        snprintf(model->status, sizeof(model->status), "invalid address: %s", address);
+                        memset(model->cmd, 0, sizeof(model->cmd));
+                        return TUI_ACT_NONE;
+                    }
+                    ux_insn_t* first = _get(model->instructions, ux_insn_t*, 0);
+                    ux_insn_t* last = _get(model->instructions, ux_insn_t*, model->instructions->length - 1);
+                    if (!first || !last) {
+                        snprintf(model->status, sizeof(model->status), "no instructions loaded.");
+                        memset(model->cmd, 0, sizeof(model->cmd));
+                        return TUI_ACT_NONE;
+                    }
+                    if (addr < (unsigned long long)first->address || addr > (unsigned long long)last->address) {
+                        snprintf(model->status, sizeof(model->status), "invalid address: %s", address);
+                        memset(model->cmd, 0, sizeof(model->cmd));
+                        return TUI_ACT_NONE;
+                    }
+
+                    /* find nearest instruction at/after addr. */
+                    ssize_t lo = 0;
+                    ssize_t hi = (ssize_t)model->instructions->length - 1;
+                    ssize_t best = hi;
+                    while (lo <= hi) {
+                        ssize_t mid = lo + (hi - lo) / 2;
+                        ux_insn_t* insn = _get(model->instructions, ux_insn_t*, mid);
+                        if (!insn) break;
+
+                        if ((unsigned long long)insn->address >= addr) {
+                            best = mid;
+                            hi = mid - 1;
+                        } else {
+                            lo = mid + 1;
+                        }
+                    }
+                    model->selected = best;
+                    model->scroll = best;
+                    snprintf(model->status, sizeof(model->status), "goto 0x%llx", addr);
+                    memset(model->cmd, 0, sizeof(model->cmd));
+                    return TUI_ACT_NONE;
+                }
             }
             if (strstr(model->cmd, "open ")) {
                 /* get the inputted file name. */
@@ -192,8 +260,18 @@ ux_handle_key(ui_model_t* model, int character) {
                     model->instructions = dyna_create();
 
                     /* remove all the old strings and put in the new. */
+                    // _foreach(model->strings, char*, str)
+                    //     if (str != NULL) free(str);
+                    // _endforeach
                     dyna_free(model->strings);
                     model->strings = dyna_create();
+
+                    /* remove all the old symbols. */
+                    _foreach(model->symbols, elf_symbol_t*, sym)
+                        free(sym);
+                    _endforeach
+                    dyna_free(model->symbols);
+                    model->symbols = dyna_create();
 
                     /* call the emitter to load the entire section of .text */
                     g_ctx = emit_load(filename, (tup_arch_t){ 0, 0 });
@@ -203,6 +281,11 @@ ux_handle_key(ui_model_t* model, int character) {
                     /* extract strings from elf and add to model. */
                     dyna_t* extracted = emit_extract_strings(g_ctx, 4);
                     if (extracted) ui_model_add_strings(model, extracted);
+                    dyna_free(extracted);
+
+                    /* extract symbols from elf and add to model. */
+                    dyna_t* symbols = emit_extract_symbols(g_ctx);
+                    if (extracted) ui_model_add_symbols(model, symbols);
 
                     /* update status and subtitle. */
                     snprintf(model->status, sizeof(model->status), \

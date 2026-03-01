@@ -242,7 +242,6 @@ emit_all(emit_ctx_t* ctx, wrk_pool_t* pool) {
     if (!ctx || !pool) return -1;
 
     /* post all code ranges. */
-    size_t job_num = 0;
     _foreach(ctx->code_ranges, code_range_t*, range)
         if (disj_post_bytes(pool, ctx->tuple, ctx->text_data + range->offset, \
             range->length, range->vaddr) != 0) {
@@ -299,20 +298,17 @@ is_valid_string(const char* str, size_t len) {
  */
 dyna_t*
 emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
-    if (!ctx || !ctx->elf) return 0x0;
-    if (min_len == 0) min_len = 4;
-
     dyna_t* strings = dyna_create();
     if (!strings) return 0x0;
 
     /* scan .rodata and .data sections. */
-    const char* section_names[] = { ".dynstr", ".strtab" };
+    const char* section_names[] = { ".rodata", ".data", ".dynstr", ".strtab" };
     _foreach(ctx->elf->shdrs, elf_shdr_t*, header)
         /* find the section. */
         bool found = false;
         const char* name = elf_shdr_name(ctx->elf, header);
         if (!name) continue;
-        for (size_t j = 0; j < 2; j++) {
+        for (size_t j = 0; j < 4; j++) {
             if (!strcmp(name, section_names[j])) {
                 found = true;
                 break;
@@ -365,4 +361,192 @@ emit_extract_strings(emit_ctx_t* ctx, size_t min_len) {
         free(data);
     _endforeach;
     return strings;
+}
+
+/* ... */
+typedef struct {
+    uint32_t name; /* string table index. */
+    uint32_t value; /* value. */
+    uint32_t size; /* size. */
+    uint8_t info; /* type and binding. */
+    uint8_t other; /* visibility. */
+    uint16_t shndx; /* section index. */
+} elf32_sym_t;
+
+/* ... */
+typedef struct {
+    uint32_t name; /* string table index. */
+    uint8_t info; /* type and binding. */
+    uint8_t other; /* visibility. */
+    uint16_t shndx; /* section index. */
+    uint64_t value; /* value. */
+    uint64_t size; /* size. */
+} elf64_sym_t;
+
+/* st_info decoding. */
+#define ELF_ST_BIND(i) ((uint8_t)((i) >> 4))
+#define ELF_ST_TYPE(i) ((uint8_t)((i) & 0x0f))
+
+/**
+ * @brief check if a string offset is valid and nul-terminated.
+ *
+ * @param strtab the string table bytes.
+ * @param strtab_size size of string table.
+ * @param off offset into string table.
+ * @return if the string is valid.
+ */
+internal bool
+is_valid_strtab_off(uint8_t* strtab, size_t strtab_size, uint32_t off) {
+    if (!strtab || strtab_size == 0) return false;
+    if (off >= strtab_size) return false;
+    /* must be nul-terminated within the table. */
+    return memchr(strtab + off, 0, strtab_size - off) != 0x0;
+}
+
+/**
+ * @brief extract symbols from elf symbol tables.
+ *
+ * @param ctx the emit context.
+ * @return dyna_t* of elf_symbol_t* symbols, or 0x0 on failure.
+ */
+dyna_t*
+emit_extract_symbols(emit_ctx_t* ctx) {
+    if (!ctx || !ctx->elf) return 0x0;
+
+    dyna_t* symbols = dyna_create();
+    if (!symbols) return 0x0;
+
+    /* scan .symtab and .dynsym sections. */
+    const char* section_names[] = { ".symtab", ".dynsym" };
+    _foreach(ctx->elf->shdrs, elf_shdr_t*, symhdr)
+        /* find the section. */
+        bool found = false;
+        const char* name = elf_shdr_name(ctx->elf, symhdr);
+        if (!name) continue;
+        for (size_t j = 0; j < 2; j++) {
+            if (!strcmp(name, section_names[j])) {
+                found = true;
+                break;
+            }
+        }
+        if (!symhdr || symhdr->size == 0 || !found) continue;
+
+        /* resolve associated string table using sh_link. */
+        if (symhdr->link >= ctx->elf->shdrs->length) continue;
+        elf_shdr_t* strhdr = _get(ctx->elf->shdrs, elf_shdr_t*, symhdr->link);
+        if (!strhdr || strhdr->size == 0) continue;
+        if (strhdr->type != ELF_SHT_STRTAB) continue;
+
+        /* read symtab and strtab data from file. */
+        FILE* f = fopen(ctx->elf->path, "rb");
+        if (!f) continue;
+
+        uint8_t* sym_data = malloc(symhdr->size);
+        if (!sym_data) {
+            fclose(f);
+            continue;
+        }
+        uint8_t* str_data = malloc(strhdr->size);
+        if (!str_data) {
+            free(sym_data);
+            fclose(f);
+            continue;
+        }
+
+        /* read sym section. */
+        fseek(f, symhdr->offset, SEEK_SET);
+        size_t sym_read = fread(sym_data, 1, symhdr->size, f);
+        if (sym_read != symhdr->size) {
+            free(sym_data);
+            free(str_data);
+            fclose(f);
+            continue;
+        }
+
+        /* read str section. */
+        fseek(f, strhdr->offset, SEEK_SET);
+        size_t str_read = fread(str_data, 1, strhdr->size, f);
+        fclose(f);
+        if (str_read != strhdr->size) {
+            free(sym_data);
+            free(str_data);
+            continue;
+        }
+
+        /* parse symbols. */
+        if (ctx->elf->class == ELF_CLASS_32) {
+            size_t entsize = symhdr->entsize ? symhdr->entsize : sizeof(elf32_sym_t);
+            if (entsize == 0) {
+                free(sym_data);
+                free(str_data);
+                continue;
+            }
+            size_t count = symhdr->size / entsize;
+            for (size_t i = 0; i < count; i++) {
+                elf32_sym_t* s = (elf32_sym_t*)(sym_data + i * entsize);
+                if (s->name == 0) continue;
+                if (!is_valid_strtab_off(str_data, strhdr->size, s->name)) continue;
+                const char* sym_name = (const char*)(str_data + s->name);
+                if (!sym_name || !*sym_name) continue;
+
+                /* copy name. */
+                size_t len = strnlen(sym_name, strhdr->size - s->name);
+                char* owned = calloc(1, len + 1);
+                if (!owned) continue;
+                memcpy(owned, sym_name, len);
+                elf_symbol_t* out = calloc(1u, sizeof *out);
+                if (!out) {
+                    free(owned);
+                    continue;
+                }
+                out->name = owned;
+                out->value = (uint64_t)s->value;
+                out->size = (uint64_t)s->size;
+                out->info = s->info;
+                out->other = s->other;
+                out->shndx = s->shndx;
+                out->bind = ELF_ST_BIND(s->info);
+                out->type = ELF_ST_TYPE(s->info);
+                dyna_push(symbols, out);
+            }
+        } else if (ctx->elf->class == ELF_CLASS_64) {
+            size_t entsize = symhdr->entsize ? symhdr->entsize : sizeof(elf64_sym_t);
+            if (entsize == 0) {
+                free(sym_data);
+                free(str_data);
+                continue;
+            }
+            size_t count = symhdr->size / entsize;
+            for (size_t i = 0; i < count; i++) {
+                elf64_sym_t* s = (elf64_sym_t*)(sym_data + i * entsize);
+                if (s->name == 0) continue;
+                if (!is_valid_strtab_off(str_data, strhdr->size, s->name)) continue;
+                const char* sym_name = (const char*)(str_data + s->name);
+                if (!sym_name || !*sym_name) continue;
+
+                /* copy name. */
+                size_t len = strnlen(sym_name, strhdr->size - s->name);
+                char* owned = calloc(1, len + 1);
+                if (!owned) continue;
+                memcpy(owned, sym_name, len);
+                elf_symbol_t* out = calloc(1u, sizeof *out);
+                if (!out) {
+                    free(owned);
+                    continue;
+                }
+                out->name = owned;
+                out->value = s->value;
+                out->size = s->size;
+                out->info = s->info;
+                out->other = s->other;
+                out->shndx = s->shndx;
+                out->bind = ELF_ST_BIND(s->info);
+                out->type = ELF_ST_TYPE(s->info);
+                dyna_push(symbols, out);
+            }
+        }
+        free(sym_data);
+        free(str_data);
+    _endforeach;
+    return symbols;
 }

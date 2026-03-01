@@ -27,6 +27,7 @@ typedef enum {
 typedef enum {
     UI_VIEW_INSTRUCTIONS = 0u, /* show disassembly. */
     UI_VIEW_STRINGS, /* show strings. */
+    UI_VIEW_SYMBOLS, /* show symbols. */
 } ui_view_mode_t;
 
 /* ... */
@@ -35,6 +36,7 @@ typedef struct {
     char* subtitle; /* e.g. "x86_64 | ELF64 | ./example_binary". */
     dyna_t* instructions; /* dynamic array of ux_insn_t* from disassembly. */
     dyna_t* strings; /* dynamic array of char* strings extracted from binary. */
+    dyna_t* symbols; /* dynamic array of elf symbols from the executable. */
     ui_view_mode_t view_mode; /* current view mode. */
     ssize_t selected; /* which line is "selected". */
     ssize_t scroll; /* first visible line. */
@@ -86,6 +88,15 @@ ui_model_clear(ui_model_t* model);
  */
 void
 ui_model_add_strings(ui_model_t* model, dyna_t* strings);
+
+/**
+ * @brief add elf symbol strings to the ui model.
+ *
+ * @param model the ui model.
+ * @param symbols dynamic array of elf_symbol_t*.
+ */
+void
+ui_model_add_symbols(ui_model_t* model, dyna_t* symbols);
 
 /**
  * @brief set the view mode.

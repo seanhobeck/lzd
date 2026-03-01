@@ -1,6 +1,6 @@
 /**
  * @author Sean Hobeck
- * @date 2026-02-28
+ * @date 2026-03-01
  */
 #ifndef LZD_ELFX_H
 #define LZD_ELFX_H
@@ -131,6 +131,18 @@ typedef struct {
     size_t shstrtab_size; /* size of shstrtab. */
     char* path; /* path to elf file. */
 } elf_t;
+
+/* ... */
+typedef struct {
+    char* name; /* symbol name (owned). */
+    uint64_t value; /* virtual address / value. */
+    uint64_t size; /* size of symbol (if known). */
+    uint8_t info; /* st_info. */
+    uint8_t other; /* st_other. */
+    uint16_t shndx; /* st_shndx. */
+    uint8_t bind; /* binding (from info). */
+    uint8_t type; /* type (from info). */
+} elf_symbol_t;
 
 /**
  * @brief parse an elf file from a file path.
