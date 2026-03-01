@@ -75,7 +75,7 @@ draw_header(WINDOW* w, ui_model_t* m) {
     if (m->subtitle) {
         mvwprintw(w, 1, 2, "%.*s", wd - 4, m->subtitle);
     }
-    wnoutrefresh(w);
+    wrefresh(w);
 }
 
 /**
@@ -146,7 +146,7 @@ draw_list(WINDOW* w, ui_model_t* m) {
     }
 
     pthread_mutex_unlock(&m->lock);
-    wnoutrefresh(w);
+    wrefresh(w);
 }
 
 /**
@@ -181,7 +181,7 @@ draw_footer(WINDOW* w, ui_model_t* m) {
     int curx = 3 + (int)strnlen(m->cmd, sizeof(m->cmd) - 1);
     curx = clampi(curx, 3, wd - 2);
     wmove(w, 2, curx);
-    wnoutrefresh(w);
+    wrefresh(w);
 }
 
 /**
@@ -223,8 +223,10 @@ ui_model_create(const char* title, const char* subtitle) {
         strncpy(model->title, title, strlen(title));
     }
     if (subtitle) {
-        model->subtitle = calloc(1u, 256u + 1);
-        strncpy(model->subtitle, subtitle, strlen(subtitle));
+        size_t n = strlen(subtitle);
+        if (n > 256u) n = 256u;
+        model->subtitle = calloc(1u, 256u + 1u);
+        strncpy(model->subtitle, subtitle, n);
     }
 
     /* initialize dynamic arrays. */
@@ -260,6 +262,9 @@ ui_model_free(ui_model_t* model) {
     /* free all strings. */
     if (model->strings) {
         dyna_free(model->strings);
+    }
+    if (model->symbols) {
+        dyna_free(model->symbols);
     }
     pthread_mutex_destroy(&model->lock);
     free(model);
