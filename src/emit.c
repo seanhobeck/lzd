@@ -1,0 +1,256 @@
+/**
+ * @author Sean Hobeck
+ * @date 2026-02-28
+ */
+#include "emit.h"
+
+/*! @uses disj_post_bytes. */
+#include "disj.h"
+
+/*! @uses fprintf, stderr, fopen, fclose, fread, fseek. */
+#include <stdio.h>
+
+/*! @uses calloc, malloc, free. */
+#include <stdlib.h>
+
+/*! @uses memcmp, memset. */
+#include <string.h>
+
+/*! @uses internal. */
+#include "dyna.h"
+
+/**
+ * @brief check if a byte is a common padding byte.
+ *
+ * @param byte the byte to check.
+ * @return if the byte is padding.
+ */
+internal bool
+is_padding(uint8_t byte) {
+    return byte == 0x00 || byte == 0x90 || byte == 0xcc;
+}
+
+/**
+ * @brief check if a sequence of bytes looks like padding.
+ *
+ * @param data the data to check.
+ * @param length the length of the data.
+ * @param min_run minimum run of padding bytes to consider it padding.
+ * @return if the sequence is padding.
+ */
+internal bool
+is_padding_run(uint8_t* data, size_t length, size_t min_run) {
+    if (length < min_run) return false;
+    size_t count = 0;
+    for (size_t i = 0; i < length; i++) {
+        if (is_padding(data[i])) count++;
+        else count = 0;
+        if (count >= min_run) return true;
+    }
+    return false;
+}
+
+/**
+ * @brief load an elf binary and prepare it for disassembly.
+ *
+ * @param path the path to the elf binary.
+ * @param tuple the architecture tuple (pass {0, 0} to auto-detect from ELF).
+ * @return an emit context if successful, 0x0 o.w.
+ */
+emit_ctx_t*
+emit_load(const char* path, tup_arch_t tuple) {
+    /* parse the elf. */
+    elf_t* elf = elf_parse(path);
+    if (!elf) {
+        fprintf(stderr, "lzd, emit_load; could not parse elf file %s.\n", path);
+        return 0x0;
+    }
+
+    /* if tuple is zero, auto-detect from elf. */
+    printf("lzd, emit_load; elf machine=%d, class=%d\n", elf->machine, elf->class);
+    if (tuple.arch == 0 && tuple.mode == 0) {
+        tuple = elf_get_arch(elf);
+        printf("lzd, emit_load; auto-detected arch=%d, mode=%d\n", tuple.arch, tuple.mode);
+    } else {
+        printf("lzd, emit_load; using provided tuple (not auto-detecting)\n");
+    }
+
+    /* find the .text section. */
+    elf_shdr_t* text_shdr = 0x0;
+    _foreach(elf->shdrs, elf_shdr_t*, shdr)
+        const char* name = elf_shdr_name(elf, shdr);
+        if (name && strcmp(name, ".text") == 0) {
+            text_shdr = shdr;
+            break;
+        }
+    _endforeach;
+    if (!text_shdr) {
+        fprintf(stderr, "lzd, emit_load; could not find .text section.\n");
+        elf_free(elf);
+        return 0x0;
+    }
+
+    /* open the file and read .text section. */
+    FILE* file = fopen(path, "rb");
+    if (!file) {
+        fprintf(stderr, "lzd, emit_load; could not open file %s.\n", path);
+        elf_free(elf);
+        return 0x0;
+    }
+    if (fseek(file, text_shdr->offset, SEEK_SET) != 0) {
+        fprintf(stderr, "lzd, emit_load; fseek failed.\n");
+        fclose(file);
+        elf_free(elf);
+        return 0x0;
+    }
+
+    /* read .text section. */
+    uint8_t* text_data = malloc(text_shdr->size);
+    if (!text_data) {
+        fprintf(stderr, "lzd, emit_load; malloc failed; could not allocate memory for .text.\n");
+        fclose(file);
+        elf_free(elf);
+        return 0x0;
+    }
+    if (fread(text_data, 1, text_shdr->size, file) != text_shdr->size) {
+        fprintf(stderr, "lzd, emit_load; fread failed; could not read .text section.\n");
+        free(text_data);
+        fclose(file);
+        elf_free(elf);
+        return 0x0;
+    }
+    fclose(file);
+
+    /* allocate and initialize context. */
+    emit_ctx_t* ctx = calloc(1u, sizeof *ctx);
+    ctx->elf = elf;
+    ctx->tuple = tuple;
+    ctx->text_data = text_data;
+    ctx->text_vaddr = text_shdr->addr;
+    ctx->text_size = text_shdr->size;
+    ctx->code_ranges = dyna_create();
+    return ctx;
+}
+
+/**
+ * @brief free an emit context.
+ *
+ * @param ctx the context to be freed.
+ */
+void
+emit_free(emit_ctx_t* ctx) {
+    if (!ctx) return;
+    elf_free(ctx->elf);
+    free(ctx->text_data);
+    if (ctx->code_ranges) {
+        _foreach(ctx->code_ranges, code_range_t*, range)
+            free(range);
+        _endforeach;
+        dyna_free(ctx->code_ranges);
+    }
+    free(ctx);
+}
+
+/**
+ * @brief scan .text section and identify code ranges (skip nops/padding).
+ *
+ * @param ctx the emit context.
+ * @return -1 if a failure occurs, 0 o.w.
+ */
+ssize_t
+emit_scan_text(emit_ctx_t* ctx) {
+    if (!ctx || !ctx->text_data) return -1;
+
+    /* scan through .text and find contiguous code ranges. */
+    size_t i = 0;
+    while (i < ctx->text_size) {
+        /* skip padding. */
+        if (is_padding(ctx->text_data[i])) {
+            i++;
+            continue;
+        }
+
+        /* found start of code, find the end. */
+        size_t start = i;
+        while (i < ctx->text_size) {
+            /* look ahead for padding runs (at least 16 bytes). */
+            if (i + 16 <= ctx->text_size && is_padding_run(&ctx->text_data[i], 16, 16)) {
+                break;
+            }
+            i++;
+        }
+
+        /* create a code range. */
+        size_t length = i - start;
+        if (length > 0) {
+            code_range_t* range = calloc(1u, sizeof *range);
+            range->vaddr = ctx->text_vaddr + start;
+            range->offset = start;
+            range->length = length;
+            dyna_push(ctx->code_ranges, range);
+        }
+    }
+    printf("lzd, emit_scan_text; found %zu code ranges.\n", ctx->code_ranges->length);
+    return 0;
+}
+
+/**
+ * @brief emit disassembly jobs for a specific virtual address range.
+ *
+ * @param ctx the emit context.
+ * @param pool the worker pool to post jobs to.
+ * @param vaddr_start the starting virtual address.
+ * @param vaddr_end the ending virtual address.
+ * @return -1 if a failure occurs, 0 o.w.
+ */
+ssize_t
+emit_range(emit_ctx_t* ctx, wrk_pool_t* pool, uint64_t vaddr_start, uint64_t vaddr_end) {
+    if (!ctx || !pool) return -1;
+
+    /* find code ranges that intersect with the requested range. */
+    size_t posted = 0;
+    _foreach(ctx->code_ranges, code_range_t*, range)
+        uint64_t range_end = range->vaddr + range->length;
+
+        /* check for intersection. */
+        if (range->vaddr >= vaddr_end || range_end <= vaddr_start)
+            continue;
+
+        /* calculate the intersection. */
+        uint64_t job_vaddr = range->vaddr > vaddr_start ? range->vaddr : vaddr_start;
+        uint64_t job_end = range_end < vaddr_end ? range_end : vaddr_end;
+        size_t job_offset = (job_vaddr - ctx->text_vaddr);
+        size_t job_length = job_end - job_vaddr;
+
+        /* post the disassembly job. */
+        if (disj_post_bytes(pool, ctx->tuple, ctx->text_data + job_offset, \
+            job_length, job_vaddr) != 0) {
+            fprintf(stderr, "lzd, emit_range; disj_post_bytes failed.\n");
+            return -1;
+        }
+        posted++;
+    _endforeach;
+    return posted > 0 ? 0 : -1;
+}
+
+/**
+ * @brief emit all disassembly jobs for the entire binary.
+ *
+ * @param ctx the emit context.
+ * @param pool the worker pool to post jobs to.
+ * @return -1 if a failure occurs, 0 o.w.
+ */
+ssize_t
+emit_all(emit_ctx_t* ctx, wrk_pool_t* pool) {
+    if (!ctx || !pool) return -1;
+
+    /* post all code ranges. */
+    _foreach(ctx->code_ranges, code_range_t*, range)
+        if (disj_post_bytes(pool, ctx->tuple, ctx->text_data + range->offset, \
+            range->length, range->vaddr) != 0) {
+            fprintf(stderr, "lzd, emit_all; disj_post_bytes failed.\n");
+            return -1;
+        }
+    _endforeach;
+    return 0;
+}
